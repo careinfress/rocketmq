@@ -148,12 +148,14 @@ public class TopicConfigManager extends ConfigManager {
         boolean createNew = false;
 
         try {
+            // 枷锁
             if (this.lockTopicConfigTable.tryLock(LOCK_TIMEOUT_MILLIS, TimeUnit.MILLISECONDS)) {
                 try {
                     topicConfig = this.topicConfigTable.get(topic);
                     if (topicConfig != null)
                         return topicConfig;
 
+                    // 如果Topic没有创建，又打开了自动创建开关，根据默认的topic的conifg来生成新topic的config
                     TopicConfig defaultTopicConfig = this.topicConfigTable.get(defaultTopic);
                     if (defaultTopicConfig != null) {
                         if (defaultTopic.equals(MixAll.AUTO_CREATE_TOPIC_KEY_TOPIC)) {
