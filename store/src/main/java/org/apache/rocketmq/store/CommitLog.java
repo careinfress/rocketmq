@@ -570,6 +570,7 @@ public class CommitLog {
         long eclipseTimeInLock = 0;
         // 文件映射
         MappedFile unlockMappedFile = null;
+        // 3@1 获取映射文件
         MappedFile mappedFile = this.mappedFileQueue.getLastMappedFile();
 
         // 获得最近的commitLog文件的内存映射文件（零拷贝）

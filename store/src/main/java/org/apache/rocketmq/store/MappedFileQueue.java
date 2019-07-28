@@ -39,6 +39,8 @@ public class MappedFileQueue {
 
     private final int mappedFileSize;
 
+    // MappedFile的集合是一个CopyOnWriteArrayList
+    // broker的初始化的时候会执行load操作
     private final CopyOnWriteArrayList<MappedFile> mappedFiles = new CopyOnWriteArrayList<MappedFile>();
 
     private final AllocateMappedFileService allocateMappedFileService;
@@ -144,6 +146,11 @@ public class MappedFileQueue {
         }
     }
 
+    /**
+     * broker启动的时候会执行
+     * 将commitlog的文件映射成MappedFile，然后存放到mappedFiles中
+     * @return
+     */
     public boolean load() {
         File dir = new File(this.storePath);
         File[] files = dir.listFiles();
@@ -193,23 +200,37 @@ public class MappedFileQueue {
 
     public MappedFile getLastMappedFile(final long startOffset, boolean needCreate) {
         long createOffset = -1;
+        // 获取最后一个映射文件，如果为null或者写满，会走创建逻辑
         MappedFile mappedFileLast = getLastMappedFile();
 
+        // 最后一个映射文件为null，也即MappedFiles为空，创建一个新的映射文件
         if (mappedFileLast == null) {
+            // 计算将要创建的映射文件的偏移量
+            // 如果指定的startOffset不足MappedFileSize ，则从offfset 0开始
+            // 否则，从未MappedFileSize整数倍的offset开始
             createOffset = startOffset - (startOffset % this.mappedFileSize);
         }
 
+        // 映射文件满了
         if (mappedFileLast != null && mappedFileLast.isFull()) {
+            // 计算将要创建的映射文件的偏移量
+            // 该映射文件的物理偏移量等于上一个CommitLog文件的起始偏移量加上CommitLog文件大小
             createOffset = mappedFileLast.getFileFromOffset() + this.mappedFileSize;
         }
 
+        // 创建新的映射文件
         if (createOffset != -1 && needCreate) {
+            // 构造CommitLog文件名称
+            // 需要构造两个映射文件，nextFilePath和nextNextFilePath
             String nextFilePath = this.storePath + File.separator + UtilAll.offset2FileName(createOffset);
             String nextNextFilePath = this.storePath + File.separator
                 + UtilAll.offset2FileName(createOffset + this.mappedFileSize);
             MappedFile mappedFile = null;
 
+            // 优先通过allocateMappedFileService创建映射文件，因为是预分配方式，性能较高
+            // 如果上述的方式失败，再通过new创建映射文件
             if (this.allocateMappedFileService != null) {
+                // 3@2
                 mappedFile = this.allocateMappedFileService.putRequestAndReturnMappedFile(nextFilePath,
                     nextNextFilePath, this.mappedFileSize);
             } else {
