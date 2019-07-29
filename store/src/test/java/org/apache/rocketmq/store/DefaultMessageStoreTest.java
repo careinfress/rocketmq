@@ -112,6 +112,7 @@ public class DefaultMessageStoreTest {
         QUEUE_TOTAL = 1;
         MessageBody = StoreMessage.getBytes();
         for (long i = 0; i < totalMsgs; i++) {
+            // 入口
             messageStore.putMessage(buildMessage());
         }
 
