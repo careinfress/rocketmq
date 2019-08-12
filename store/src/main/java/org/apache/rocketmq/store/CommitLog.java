@@ -159,6 +159,18 @@ public class CommitLog {
      * When the normal exit, data recovery, all memory data have been flush
      */
     public void recoverNormally(long maxPhyOffsetOfConsumeQueue) {
+
+        // broker正常关闭时，commitlog的恢复
+        // ConsumeQueue落地的消息 >= CommitLog落地消息？
+        // 从倒数第三个文件开始恢复
+
+        /**
+         *
+         * 1. MappedFile(FlushedPosition+committedPosition+wrotePosition)
+         * 2. MappedFileQueue(FlushedWhere, committedWhere)
+         * 3. 清除ConsumeQueue的脏数据
+         */
+
         boolean checkCRCOnRecover = this.defaultMessageStore.getMessageStoreConfig().isCheckCRCOnRecover();
         final List<MappedFile> mappedFiles = this.mappedFileQueue.getMappedFiles();
         if (!mappedFiles.isEmpty()) {
@@ -399,6 +411,22 @@ public class CommitLog {
     }
 
     public void recoverAbnormally(long maxPhyOffsetOfConsumeQueue) {
+
+        // broker异常时,CommitLog的恢复
+        // ConsumeQueue落地消息 >= CommitLog落地的消息
+        // 或者 CommitLog落地的消息 >= ConsumeQueue落地消息
+        // 从最后一个文件尝试开始恢复，第一个消息的落地时间小于storeCheckPoint记录的时间
+
+
+
+        /**
+         *
+         * 1. MappedFile(FlushedPosition+committedPosition+wrotePosition)
+         * 2. MappedFileQueue(FlushedWhere, committedWhere)
+         * 3. 重构ConsumeQueue的Index
+         * 4. 清除ConsumeQueue的脏数据
+         */
+
         // recover by the minimum time stamp
         boolean checkCRCOnRecover = this.defaultMessageStore.getMessageStoreConfig().isCheckCRCOnRecover();
         final List<MappedFile> mappedFiles = this.mappedFileQueue.getMappedFiles();
@@ -470,6 +498,8 @@ public class CommitLog {
 
             // Clear ConsumeQueue redundant data
             if (maxPhyOffsetOfConsumeQueue >= processOffset) {
+                // ConsumeQueue落地的文件 >= CommitLog落地的数据
+                // 清除ConsumeQueue的脏数据
                 log.warn("maxPhyOffsetOfConsumeQueue({}) >= processOffset({}), truncate dirty logic files", maxPhyOffsetOfConsumeQueue, processOffset);
                 this.defaultMessageStore.truncateDirtyLogicFiles(processOffset);
             }

@@ -169,25 +169,33 @@ public class DefaultMessageStore implements MessageStore {
         boolean result = true;
 
         try {
+            // abort 文件是否存在
+            // abort 异常关闭：存在
             boolean lastExitOK = !this.isTempFileExist();
             log.info("last shutdown {}", lastExitOK ? "normally" : "abnormally");
 
+            // 处理定时消息
             if (null != scheduleMessageService) {
                 result = result && this.scheduleMessageService.load();
             }
 
             // load Commit Log
+            // 初始化CommitLog目录下的所有的MappedFile
             result = result && this.commitLog.load();
 
             // load Consume Queue
+            // 初始化所有Topic下所有队列的MappedFile，consumeQueue初始化
             result = result && this.loadConsumeQueue();
 
             if (result) {
+                // 数据安全落地的checkPoint，决定CommitLog文件是从哪里开始恢复的
                 this.storeCheckpoint =
                     new StoreCheckpoint(StorePathConfigHelper.getStoreCheckpoint(this.messageStoreConfig.getStorePathRootDir()));
 
+                // 索引文件的初始化
                 this.indexService.load(lastExitOK);
 
+                // CommitLog、consumeQueue、index开始恢复
                 this.recover(lastExitOK);
 
                 log.info("load over, and the max phy offset = {}", this.getMaxPhyOffset());
@@ -1282,15 +1290,29 @@ public class DefaultMessageStore implements MessageStore {
         return true;
     }
 
+    /**
+     * 文件恢复
+     * @param lastExitOK
+     */
     private void recover(final boolean lastExitOK) {
+        // 每个队列的最大逻辑偏移量
+        // 每个队列的最后一个消息的CommitLog绝对物理位置
+        // 但这些数据和CommitLog不一致，待会恢复CommitLog的时候需要重建或者删除脏数据
+        // 在所有逻辑队列最后一个消息的CommitLog绝对物理位置，取最大值
+        // 恢复ConsumeQueue文件
         long maxPhyOffsetOfConsumeQueue = this.recoverConsumeQueue();
 
+        // 正常退出还是异常退出
+        // 恢复CommitLog文件
         if (lastExitOK) {
             this.commitLog.recoverNormally(maxPhyOffsetOfConsumeQueue);
         } else {
             this.commitLog.recoverAbnormally(maxPhyOffsetOfConsumeQueue);
         }
 
+        // 恢复CommitLog维护的这个HashMap<String/* topic-queueUd */, Long /* offset */ topicQueueTable>
+        // 每个topic的每个队列的最大逻辑偏移量
+        // 修正每个topic的每个队列的最小逻辑偏移量
         this.recoverTopicQueueTable();
     }
 
@@ -1313,12 +1335,19 @@ public class DefaultMessageStore implements MessageStore {
         }
     }
 
+    /**
+     *
+     * 恢复ConsumerQueue
+     * @return
+     */
     private long recoverConsumeQueue() {
         long maxPhysicOffset = -1;
         for (ConcurrentMap<Integer, ConsumeQueue> maps : this.consumeQueueTable.values()) {
             for (ConsumeQueue logic : maps.values()) {
+                // 恢复一个逻辑队列的数据，要遍历所有的topic的所有队列
                 logic.recover();
                 if (logic.getMaxPhysicOffset() > maxPhysicOffset) {
+                    // 恢复过程会记录每个逻辑队列的最后一个消息在CommitLog文件中的物理位置
                     maxPhysicOffset = logic.getMaxPhysicOffset();
                 }
             }
@@ -1448,6 +1477,9 @@ public class DefaultMessageStore implements MessageStore {
         }
     }
 
+    /**
+     * 清除CommitLog线程
+     */
     class CleanCommitLogService {
 
         private final static int MAX_MANUAL_DELETE_FILE_TIMES = 20;
@@ -1469,8 +1501,11 @@ public class DefaultMessageStore implements MessageStore {
 
         public void run() {
             try {
+                // 删除过期文件
                 this.deleteExpiredFiles();
 
+                // 如果待删除的正在被读取，第一次和后面的一段时间会被拒绝删除
+                // 一段时间之后，文件将被强制删除
                 this.redeleteHangedFile();
             } catch (Throwable e) {
                 DefaultMessageStore.log.warn(this.getServiceName() + " service has exception. ", e);
@@ -1483,7 +1518,9 @@ public class DefaultMessageStore implements MessageStore {
             int deletePhysicFilesInterval = DefaultMessageStore.this.getMessageStoreConfig().getDeleteCommitLogFilesInterval();
             int destroyMapedFileIntervalForcibly = DefaultMessageStore.this.getMessageStoreConfig().getDestroyMapedFileIntervalForcibly();
 
+            // 是否是删除过期文件
             boolean timeup = this.isTimeToDelete();
+            // 剩余磁盘空间是否足够
             boolean spacefull = this.isSpaceToDelete();
             boolean manualDelete = this.manualDeleteFileSeveralTimes > 0;
 
@@ -1538,6 +1575,11 @@ public class DefaultMessageStore implements MessageStore {
             return false;
         }
 
+        /**
+         *
+         * 磁盘空间
+         * @return
+         */
         private boolean isSpaceToDelete() {
             double ratio = DefaultMessageStore.this.getMessageStoreConfig().getDiskMaxUsedSpaceRatio() / 100.0;
 
@@ -1545,17 +1587,21 @@ public class DefaultMessageStore implements MessageStore {
 
             {
                 String storePathPhysic = DefaultMessageStore.this.getMessageStoreConfig().getStorePathCommitLog();
+                // 当前CommitLog目录所在的磁盘分区的磁盘使用率
                 double physicRatio = UtilAll.getDiskPartitionSpaceUsedPercent(storePathPhysic);
                 if (physicRatio > diskSpaceWarningLevelRatio) {
+                    // 设置磁盘不可写，会拒绝新消息的写入
                     boolean diskok = DefaultMessageStore.this.runningFlags.getAndMakeDiskFull();
                     if (diskok) {
                         DefaultMessageStore.log.error("physic disk maybe full soon " + physicRatio + ", so mark disk full");
                     }
-
+                    // 触发立即删除文件
                     cleanImmediately = true;
                 } else if (physicRatio > diskSpaceCleanForciblyRatio) {
+                    // 不会拒绝新消息的写入
                     cleanImmediately = true;
                 } else {
+                    // 清除标记，确保新消息可以写入
                     boolean diskok = DefaultMessageStore.this.runningFlags.getAndMakeDiskOK();
                     if (!diskok) {
                         DefaultMessageStore.log.info("physic disk space OK " + physicRatio + ", so mark disk ok");
@@ -1563,6 +1609,7 @@ public class DefaultMessageStore implements MessageStore {
                 }
 
                 if (physicRatio < 0 || physicRatio > ratio) {
+                    // 正常
                     DefaultMessageStore.log.info("physic disk maybe full soon, so reclaim space, " + physicRatio);
                     return true;
                 }

@@ -85,6 +85,17 @@ public class ConsumeQueue {
     }
 
     public void recover() {
+
+        // 从倒数第三个文件开始恢复
+        // 恢复的数据
+
+        /**
+         *
+         * 1. MappedFile(FlushedPosition+committedPosition+wrotePosition)
+         * 2. MappedFileQueue(FlushedWhere, committedWhere)
+         * 3. ConsumeQueue(maxPhyicOffset)
+         */
+
         final List<MappedFile> mappedFiles = this.mappedFileQueue.getMappedFiles();
         if (!mappedFiles.isEmpty()) {
 
@@ -100,7 +111,10 @@ public class ConsumeQueue {
             long maxExtAddr = 1;
             while (true) {
                 for (int i = 0; i < mappedFileSizeLogics; i += CQ_STORE_UNIT_SIZE) {
+                    // consumeQueue的三个成员属性
+                    // 偏移量
                     long offset = byteBuffer.getLong();
+                    // 文件大小
                     int size = byteBuffer.getInt();
                     long tagsCode = byteBuffer.getLong();
 

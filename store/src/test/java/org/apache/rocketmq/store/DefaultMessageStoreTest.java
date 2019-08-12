@@ -177,6 +177,9 @@ public class DefaultMessageStoreTest {
     }
 
     @Test
+    /**
+     * 模拟文件恢复
+     */
     public void testRecover() throws Exception {
         String topic = "recoverTopic";
         MessageBody = StoreMessage.getBytes();
@@ -187,13 +190,25 @@ public class DefaultMessageStoreTest {
             messageStore.putMessage(messageExtBrokerInner);
         }
 
+        // 等待写入文件完成
         Thread.sleep(100);//wait for build consumer queue
+        // 文件的物理偏移量
         long maxPhyOffset = messageStore.getMaxPhyOffset();
+        // 文件的逻辑偏移量
         long maxCqOffset = messageStore.getMaxOffsetInQueue(topic, 0);
 
+        // 通过堆栈看一下数据结构
+        // DefaultMessageStore#CommitLog#HashMap<String/* topic-queueUd */, Long /* offset */ topicQueueTable>
+        // CommitLog的MappedQueue的MappedFile
+        // ConsumeQueue的MappedQueue的MappedFile
+
+
         //1.just reboot
+        // shutdown关闭broker
         messageStore.shutdown();
         messageStore = buildMessageStore();
+
+        // 数据恢复
         boolean load = messageStore.load();
         assertTrue(load);
         messageStore.start();
