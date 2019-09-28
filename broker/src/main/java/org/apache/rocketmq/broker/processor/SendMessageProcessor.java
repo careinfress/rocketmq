@@ -95,6 +95,13 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
             this.brokerController.getMessageStore().isTransientStorePoolDeficient();
     }
 
+    /**
+     * 消费端在消费消息失败后的回调方法，将消息发送到broker
+     * @param ctx
+     * @param request
+     * @return
+     * @throws RemotingCommandException
+     */
     private RemotingCommand consumerSendMsgBack(final ChannelHandlerContext ctx, final RemotingCommand request)
         throws RemotingCommandException {
         final RemotingCommand response = RemotingCommand.createResponseCommand(null);
@@ -113,6 +120,9 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
             this.executeConsumeMessageHookAfter(context);
         }
 
+        // 查询订阅关系，消费者组的订阅关系
+        // 消费者启动的时候会有定时任务，不断的往broker中发送自己的心跳信息
+        // 心跳信息中就包含有订阅信息
         SubscriptionGroupConfig subscriptionGroupConfig =
             this.brokerController.getSubscriptionGroupManager().findSubscriptionGroupConfig(requestHeader.getGroup());
         if (null == subscriptionGroupConfig) {
@@ -158,6 +168,7 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
             return response;
         }
 
+        // 从CommitLog中获取原先投递的信息（消费失败后发送重试的请求）
         MessageExt msgExt = this.brokerController.getMessageStore().lookMessageByOffset(requestHeader.getOffset());
         if (null == msgExt) {
             response.setCode(ResponseCode.SYSTEM_ERROR);
@@ -194,12 +205,15 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
             }
         } else {
             if (0 == delayLevel) {
+                // level3==10s
                 delayLevel = 3 + msgExt.getReconsumeTimes();
             }
 
             msgExt.setDelayTimeLevel(delayLevel);
         }
 
+        // 二号message
+        // 新的message的内容跟老的message一样
         MessageExtBrokerInner msgInner = new MessageExtBrokerInner();
         msgInner.setTopic(newTopic);
         msgInner.setBody(msgExt.getBody());
@@ -213,6 +227,7 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
         msgInner.setBornTimestamp(msgExt.getBornTimestamp());
         msgInner.setBornHost(msgExt.getBornHost());
         msgInner.setStoreHost(this.getStoreHost());
+        // 重试次数+1
         msgInner.setReconsumeTimes(msgExt.getReconsumeTimes() + 1);
 
         String originMsgId = MessageAccessor.getOriginMessageId(msgExt);

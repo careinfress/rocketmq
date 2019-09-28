@@ -36,6 +36,15 @@ public class FilterAPI {
         return simple;
     }
 
+    /**
+     * 构建订阅信息
+     *
+     * @param consumerGroup
+     * @param topic
+     * @param subString tag
+     * @return
+     * @throws Exception
+     */
     public static SubscriptionData buildSubscriptionData(final String consumerGroup, String topic,
         String subString) throws Exception {
         SubscriptionData subscriptionData = new SubscriptionData();
@@ -45,13 +54,14 @@ public class FilterAPI {
         if (null == subString || subString.equals(SubscriptionData.SUB_ALL) || subString.length() == 0) {
             subscriptionData.setSubString(SubscriptionData.SUB_ALL);
         } else {
-            String[] tags = subString.split("\\|\\|");
+            String[] tags = subString.split("\\|\\|"); // ||
             if (tags.length > 0) {
                 for (String tag : tags) {
                     if (tag.length() > 0) {
                         String trimString = tag.trim();
                         if (trimString.length() > 0) {
                             subscriptionData.getTagsSet().add(trimString);
+                            // hash
                             subscriptionData.getCodeSet().add(trimString.hashCode());
                         }
                     }

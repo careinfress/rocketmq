@@ -202,7 +202,7 @@ public class ScheduleMessageService extends ConfigManager {
         return true;
     }
 
-    class DeliverDelayedMessageTimerTask extends TimerTask {
+    class  DeliverDelayedMessageTimerTask extends TimerTask {
         private final int delayLevel;
         private final long offset;
 
@@ -276,13 +276,16 @@ public class ScheduleMessageService extends ConfigManager {
 
                             long countdown = deliverTimestamp - now;
 
+                            // 看看延迟时间剩余多少，小于0则立马投递
                             if (countdown <= 0) {
+                                // 从CommitLog中获取到2号message
                                 MessageExt msgExt =
                                     ScheduleMessageService.this.defaultMessageStore.lookMessageByOffset(
                                         offsetPy, sizePy);
 
                                 if (msgExt != null) {
                                     try {
+                                        // 又构建了一个message，3号message
                                         MessageExtBrokerInner msgInner = this.messageTimeup(msgExt);
                                         PutMessageResult putMessageResult =
                                             ScheduleMessageService.this.defaultMessageStore
@@ -350,6 +353,7 @@ public class ScheduleMessageService extends ConfigManager {
                 failScheduleOffset), DELAY_FOR_A_WHILE);
         }
 
+
         private MessageExtBrokerInner messageTimeup(MessageExt msgExt) {
             MessageExtBrokerInner msgInner = new MessageExtBrokerInner();
             msgInner.setBody(msgExt.getBody());
@@ -371,6 +375,7 @@ public class ScheduleMessageService extends ConfigManager {
             msgInner.setWaitStoreMsgOK(false);
             MessageAccessor.clearProperty(msgInner, MessageConst.PROPERTY_DELAY_TIME_LEVEL);
 
+            // retry 从定时Topic转为 retry
             msgInner.setTopic(msgInner.getProperty(MessageConst.PROPERTY_REAL_TOPIC));
 
             String queueIdStr = msgInner.getProperty(MessageConst.PROPERTY_REAL_QUEUE_ID);
