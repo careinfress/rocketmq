@@ -130,6 +130,7 @@ public class ConsumerOffsetManager extends ConfigManager {
         if (null == map) {
             map = new ConcurrentHashMap<Integer, Long>(32);
             map.put(queueId, offset);
+            // 更新缓存offsetTable
             this.offsetTable.put(key, map);
         } else {
             Long storeOffset = map.put(queueId, offset);

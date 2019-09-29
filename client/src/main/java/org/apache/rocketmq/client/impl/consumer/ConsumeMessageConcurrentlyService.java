@@ -212,6 +212,8 @@ public class ConsumeMessageConcurrentlyService implements ConsumeMessageService 
                 this.submitConsumeRequestLater(consumeRequest);
             }
         } else {
+            // 普通消费的情况下一次消费一条消息
+            // 批量消费的情况下取决于批量处理消息的size与拉取到本地的Msg size
             for (int total = 0; total < msgs.size(); ) {
                 List<MessageExt> msgThis = new ArrayList<MessageExt>(consumeBatchSize);
                 for (int i = 0; i < consumeBatchSize; i++, total++) {

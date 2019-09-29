@@ -86,6 +86,14 @@ public class PullMessageProcessor implements NettyRequestProcessor {
         return false;
     }
 
+    /**
+     * 处理消费端过来拉取数据的请求
+     * @param channel
+     * @param request
+     * @param brokerAllowSuspend
+     * @return
+     * @throws RemotingCommandException
+     */
     private RemotingCommand processRequest(final Channel channel, RemotingCommand request, boolean brokerAllowSuspend)
         throws RemotingCommandException {
         RemotingCommand response = RemotingCommand.createResponseCommand(PullMessageResponseHeader.class);
@@ -97,12 +105,14 @@ public class PullMessageProcessor implements NettyRequestProcessor {
 
         log.debug("receive PullMessage request command, {}", request);
 
+        // 判断broker是否有读权限
         if (!PermName.isReadable(this.brokerController.getBrokerConfig().getBrokerPermission())) {
             response.setCode(ResponseCode.NO_PERMISSION);
             response.setRemark(String.format("the broker[%s] pulling message is forbidden", this.brokerController.getBrokerConfig().getBrokerIP1()));
             return response;
         }
 
+        // 获取订阅关系
         SubscriptionGroupConfig subscriptionGroupConfig =
             this.brokerController.getSubscriptionGroupManager().findSubscriptionGroupConfig(requestHeader.getConsumerGroup());
         if (null == subscriptionGroupConfig) {
@@ -111,6 +121,7 @@ public class PullMessageProcessor implements NettyRequestProcessor {
             return response;
         }
 
+        // 判断消费组是否被停用
         if (!subscriptionGroupConfig.isConsumeEnable()) {
             response.setCode(ResponseCode.NO_PERMISSION);
             response.setRemark("subscription group no permission, " + requestHeader.getConsumerGroup());
@@ -131,6 +142,7 @@ public class PullMessageProcessor implements NettyRequestProcessor {
             return response;
         }
 
+        // Topic读权限判断
         if (!PermName.isReadable(topicConfig.getPerm())) {
             response.setCode(ResponseCode.NO_PERMISSION);
             response.setRemark("the topic[" + requestHeader.getTopic() + "] pulling message is forbidden");
@@ -168,6 +180,7 @@ public class PullMessageProcessor implements NettyRequestProcessor {
                 return response;
             }
         } else {
+            // 消费者组信息非空判断
             ConsumerGroupInfo consumerGroupInfo =
                 this.brokerController.getConsumerManager().getConsumerGroupInfo(requestHeader.getConsumerGroup());
             if (null == consumerGroupInfo) {
@@ -177,6 +190,7 @@ public class PullMessageProcessor implements NettyRequestProcessor {
                 return response;
             }
 
+            // 广播类型判断
             if (!subscriptionGroupConfig.isConsumeBroadcastEnable()
                 && consumerGroupInfo.getMessageModel() == MessageModel.BROADCASTING) {
                 response.setCode(ResponseCode.NO_PERMISSION);
@@ -237,6 +251,7 @@ public class PullMessageProcessor implements NettyRequestProcessor {
         final GetMessageResult getMessageResult =
             this.brokerController.getMessageStore().getMessage(requestHeader.getConsumerGroup(), requestHeader.getTopic(),
                 requestHeader.getQueueId(), requestHeader.getQueueOffset(), requestHeader.getMaxMsgNums(), messageFilter);
+        // 查找结果处理构造responseHeader
         if (getMessageResult != null) {
             response.setRemark(getMessageResult.getStatus().name());
             responseHeader.setNextBeginOffset(getMessageResult.getNextBeginOffset());
@@ -324,6 +339,7 @@ public class PullMessageProcessor implements NettyRequestProcessor {
                     break;
             }
 
+            // 执行hook
             if (this.hasConsumeMessageHook()) {
                 ConsumeMessageContext context = new ConsumeMessageContext();
                 context.setConsumerGroup(requestHeader.getConsumerGroup());
@@ -464,6 +480,7 @@ public class PullMessageProcessor implements NettyRequestProcessor {
         storeOffsetEnable = storeOffsetEnable
             && this.brokerController.getMessageStoreConfig().getBrokerRole() != BrokerRole.SLAVE;
         if (storeOffsetEnable) {
+            // 更新broker端的消费进度
             this.brokerController.getConsumerOffsetManager().commitOffset(RemotingHelper.parseChannelRemoteAddr(channel),
                 requestHeader.getConsumerGroup(), requestHeader.getTopic(), requestHeader.getQueueId(), requestHeader.getCommitOffset());
         }

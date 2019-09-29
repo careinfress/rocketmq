@@ -451,6 +451,17 @@ public class DefaultMessageStore implements MessageStore {
         return commitLog;
     }
 
+    /**
+     * 查找消息
+     *
+     * @param group Consumer group that launches this query.
+     * @param topic Topic to query.
+     * @param queueId Queue ID to query.
+     * @param offset Logical offset to start from.
+     * @param maxMsgNums Maximum count of messages to query.
+     * @param messageFilter Message filter used to screen desired messages.
+     * @return
+     */
     public GetMessageResult getMessage(final String group, final String topic, final int queueId, final long offset,
         final int maxMsgNums,
         final MessageFilter messageFilter) {
@@ -472,15 +483,19 @@ public class DefaultMessageStore implements MessageStore {
         long maxOffset = 0;
 
         GetMessageResult getResult = new GetMessageResult();
-
+        //  获取储存日志中的最大偏移量
         final long maxOffsetPy = this.commitLog.getMaxOffset();
 
+        // 通过 topic queueId 查找consumeQueue
         ConsumeQueue consumeQueue = findConsumeQueue(topic, queueId);
         if (consumeQueue != null) {
+            // 最大偏移量
             minOffset = consumeQueue.getMinOffsetInQueue();
+            // 最小偏移量
             maxOffset = consumeQueue.getMaxOffsetInQueue();
 
             if (maxOffset == 0) {
+                // 没有消息
                 status = GetMessageStatus.NO_MESSAGE_IN_QUEUE;
                 nextBeginOffset = nextOffsetCorrection(offset, 0);
             } else if (offset < minOffset) {
@@ -497,6 +512,7 @@ public class DefaultMessageStore implements MessageStore {
                     nextBeginOffset = nextOffsetCorrection(offset, maxOffset);
                 }
             } else {
+                // 根据查找偏移量offset查找consumerQueue
                 SelectMappedBufferResult bufferConsumeQueue = consumeQueue.getIndexBuffer(offset);
                 if (bufferConsumeQueue != null) {
                     try {
@@ -506,10 +522,12 @@ public class DefaultMessageStore implements MessageStore {
                         long maxPhyOffsetPulling = 0;
 
                         int i = 0;
+                        // 拉取消息的最大值不能大于16000(consumerQueue)
                         final int maxFilterMessageCount = Math.max(16000, maxMsgNums * ConsumeQueue.CQ_STORE_UNIT_SIZE);
                         final boolean diskFallRecorded = this.messageStoreConfig.isDiskFallRecorded();
                         ConsumeQueueExt.CqExtUnit cqExtUnit = new ConsumeQueueExt.CqExtUnit();
                         for (; i < bufferConsumeQueue.getSize() && i < maxFilterMessageCount; i += ConsumeQueue.CQ_STORE_UNIT_SIZE) {
+                            // consumerQueue 三个参数
                             long offsetPy = bufferConsumeQueue.getByteBuffer().getLong();
                             int sizePy = bufferConsumeQueue.getByteBuffer().getInt();
                             long tagsCode = bufferConsumeQueue.getByteBuffer().getLong();
@@ -521,13 +539,17 @@ public class DefaultMessageStore implements MessageStore {
                                     continue;
                             }
 
+                            // 检查是否在磁盘中
                             boolean isInDisk = checkInDiskByCommitOffset(offsetPy, maxOffsetPy);
 
+
+                            // 本次拉取否已经终止
                             if (this.isTheBatchFull(sizePy, maxMsgNums, getResult.getBufferTotalSize(), getResult.getMessageCount(),
                                 isInDisk)) {
                                 break;
                             }
 
+                            // 通过tagsCode进行消息过滤
                             boolean extRet = false, isTagsCodeLegal = true;
                             if (consumeQueue.isExtAddr(tagsCode)) {
                                 extRet = consumeQueue.getExt(tagsCode, cqExtUnit);
@@ -540,7 +562,8 @@ public class DefaultMessageStore implements MessageStore {
                                     isTagsCodeLegal = false;
                                 }
                             }
-                            // 通过Tag hash过滤
+
+                            // 通过Tag hash过滤(消息查找前)
                             if (messageFilter != null
                                 && !messageFilter.isMatchedByConsumeQueue(isTagsCodeLegal ? tagsCode : null, extRet ? cqExtUnit : null)) {
                                 if (getResult.getBufferTotalSize() == 0) {
@@ -550,6 +573,7 @@ public class DefaultMessageStore implements MessageStore {
                                 continue;
                             }
 
+                            // 从commitlog中查找数据
                             SelectMappedBufferResult selectResult = this.commitLog.getMessage(offsetPy, sizePy);
                             if (null == selectResult) {
                                 if (getResult.getBufferTotalSize() == 0) {
@@ -560,6 +584,8 @@ public class DefaultMessageStore implements MessageStore {
                                 continue;
                             }
 
+
+                            // 通过SQL92过滤(消息拉取后)
                             if (messageFilter != null
                                 && !messageFilter.isMatchedByCommitLog(selectResult.getByteBuffer().slice(), null)) {
                                 if (getResult.getBufferTotalSize() == 0) {
@@ -570,6 +596,7 @@ public class DefaultMessageStore implements MessageStore {
                                 continue;
                             }
 
+                            // 返回查询结果
                             this.storeStatsService.getGetMessageTransferedMsgCount().incrementAndGet();
                             getResult.addMessage(selectResult);
                             status = GetMessageStatus.FOUND;
@@ -577,15 +604,19 @@ public class DefaultMessageStore implements MessageStore {
                         }
 
                         if (diskFallRecorded) {
+
                             long fallBehind = maxOffsetPy - maxPhyOffsetPulling;
                             brokerStatsManager.recordDiskFallBehindSize(group, topic, queueId, fallBehind);
                         }
 
+                        // 递增下次查询的偏移量
                         nextBeginOffset = offset + (i / ConsumeQueue.CQ_STORE_UNIT_SIZE);
 
+                        // 计算未被拉取的消费长度
                         long diff = maxOffsetPy - maxPhyOffsetPulling;
                         long memory = (long) (StoreUtil.TOTAL_PHYSICAL_MEMORY_SIZE
                             * (this.messageStoreConfig.getAccessMessageInMemoryMaxRatio() / 100.0));
+                        // 超过内存的40%判断建议从slave中读取
                         getResult.setSuggestPullingFromSlave(diff > memory);
                     } finally {
 
@@ -612,7 +643,9 @@ public class DefaultMessageStore implements MessageStore {
         this.storeStatsService.setGetMessageEntireTimeMax(eclipseTime);
 
         getResult.setStatus(status);
+        // 设置下次拉取的偏移量
         getResult.setNextBeginOffset(nextBeginOffset);
+        // 设置最大的偏移量
         getResult.setMaxOffset(maxOffset);
         getResult.setMinOffset(minOffset);
         return getResult;
@@ -1135,6 +1168,8 @@ public class DefaultMessageStore implements MessageStore {
     }
 
     private boolean checkInDiskByCommitOffset(long offsetPy, long maxOffsetPy) {
+        // 计算物理内存中40%(默认)大小的memory
+        // 日志中的最大偏移量减去待录取的偏移量与memory的大小
         long memory = (long) (StoreUtil.TOTAL_PHYSICAL_MEMORY_SIZE * (this.messageStoreConfig.getAccessMessageInMemoryMaxRatio() / 100.0));
         return (maxOffsetPy - offsetPy) > memory;
     }
@@ -1148,7 +1183,7 @@ public class DefaultMessageStore implements MessageStore {
         if (maxMsgNums <= messageTotal) {
             return true;
         }
-
+        // 如果是从磁盘录取,一次拉取8条,最多64k
         if (isInDisk) {
             if ((bufferTotal + sizePy) > this.messageStoreConfig.getMaxTransferBytesOnMessageInDisk()) {
                 return true;
@@ -1158,6 +1193,7 @@ public class DefaultMessageStore implements MessageStore {
                 return true;
             }
         } else {
+            // 如果是从缓存中拉取,一次最多32条,最多256k
             if ((bufferTotal + sizePy) > this.messageStoreConfig.getMaxTransferBytesOnMessageInMemory()) {
                 return true;
             }
