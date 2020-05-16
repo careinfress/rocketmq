@@ -486,7 +486,7 @@ public class DefaultMessageStore implements MessageStore {
         //  获取储存日志中的最大偏移量
         final long maxOffsetPy = this.commitLog.getMaxOffset();
 
-        // 通过 topic queueId 查找consumeQueue
+        // 通过 topic queueId 查找 consumeQueue
         ConsumeQueue consumeQueue = findConsumeQueue(topic, queueId);
         if (consumeQueue != null) {
             // 最大偏移量
@@ -1866,10 +1866,12 @@ public class DefaultMessageStore implements MessageStore {
                             if (dispatchRequest.isSuccess()) {
                                 if (size > 0) {
                                     // 重要方法，进入
+                                    // 将CommitLog的变化追加到consumerQueue中
                                     DefaultMessageStore.this.doDispatch(dispatchRequest);
-
+                                    // 判断是否开启长轮询，唤醒暂停住的消费端过来拉取的线程
                                     if (BrokerRole.SLAVE != DefaultMessageStore.this.getMessageStoreConfig().getBrokerRole()
                                         && DefaultMessageStore.this.brokerConfig.isLongPollingEnable()) {
+
                                         DefaultMessageStore.this.messageArrivingListener.arriving(dispatchRequest.getTopic(),
                                             dispatchRequest.getQueueId(), dispatchRequest.getConsumeQueueOffset() + 1,
                                             dispatchRequest.getTagsCode(), dispatchRequest.getStoreTimestamp(),

@@ -89,7 +89,13 @@ public class DefaultMQPushConsumerImpl implements MQConsumerInner {
      * Delay some time when suspend pull service
      */
     private static final long PULL_TIME_DELAY_MILLS_WHEN_SUSPEND = 1000;
+    /**
+     * 请求在broker中暂停的最长时间
+     */
     private static final long BROKER_SUSPEND_MAX_TIME_MILLIS = 1000 * 15;
+    /**
+     * 消费者超时时间
+     */
     private static final long CONSUMER_TIMEOUT_MILLIS_WHEN_SUSPEND = 1000 * 30;
     private final InternalLogger log = ClientLogger.getLog();
     private final DefaultMQPushConsumer defaultMQPushConsumer;
@@ -411,11 +417,12 @@ public class DefaultMQPushConsumerImpl implements MQConsumerInner {
 
         int sysFlag = PullSysFlag.buildSysFlag(
             commitOffsetEnable, // commitOffset
-            true, // suspend
+            true, // suspend 这个地方默认为true，允许在broker没有数据的情况下暂停这个请求，先不要返回
             subExpression != null, // subscription
             classFilter // class filter
         );
         try {
+            // 拉取数据的方法，异步调用
             this.pullAPIWrapper.pullKernelImpl(
                 pullRequest.getMessageQueue(),
                 subExpression,

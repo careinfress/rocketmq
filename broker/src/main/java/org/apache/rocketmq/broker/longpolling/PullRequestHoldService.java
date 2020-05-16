@@ -129,6 +129,7 @@ public class PullRequestHoldService extends ServiceThread {
                     }
 
                     if (newestOffset > request.getPullFromThisOffset()) {
+                        // broker端的tag hash过滤
                         boolean match = request.getMessageFilter().isMatchedByConsumeQueue(tagsCode,
                             new ConsumeQueueExt.CqExtUnit(tagsCode, msgStoreTime, filterBitMap));
                         // match by bit map, need eval again when properties is not null.
@@ -138,6 +139,7 @@ public class PullRequestHoldService extends ServiceThread {
 
                         if (match) {
                             try {
+                                // 重新包装请求放到线程池中
                                 this.brokerController.getPullMessageProcessor().executeRequestWhenWakeup(request.getClientChannel(),
                                     request.getRequestCommand());
                             } catch (Throwable e) {
