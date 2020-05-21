@@ -486,7 +486,7 @@ public class DefaultMessageStore implements MessageStore {
         //  获取储存日志中的最大偏移量
         final long maxOffsetPy = this.commitLog.getMaxOffset();
 
-        // 通过 topic queueId 查找 consumeQueue
+        // 通过 topic queueId 查找consumeQueue
         ConsumeQueue consumeQueue = findConsumeQueue(topic, queueId);
         if (consumeQueue != null) {
             // 最大偏移量
