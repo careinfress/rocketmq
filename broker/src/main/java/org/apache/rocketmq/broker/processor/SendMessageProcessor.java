@@ -427,9 +427,6 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
         msgInner.setBody(body);
         msgInner.setFlag(requestHeader.getFlag());
         MessageAccessor.setProperties(msgInner, MessageDecoder.string2messageProperties(requestHeader.getProperties()));
-        // Message的扩展属性子段，比如UniKey，keys, tag都在这个里面
-        msgInner.setPropertiesString(requestHeader.getProperties());
-        // Message在客户端生成的时间
         msgInner.setBornTimestamp(requestHeader.getBornTimestamp());
         // Message的发送方地址
         msgInner.setBornHost(ctx.channel().remoteAddress());
@@ -437,11 +434,15 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
         msgInner.setStoreHost(this.getStoreHost());
         // 如果是重试消费的消息，有一个重试消费的次数
         msgInner.setReconsumeTimes(requestHeader.getReconsumeTimes() == null ? 0 : requestHeader.getReconsumeTimes());
-
+        // Message的扩展属性子段，比如UniKey，keys, tag都在这个里面
+        String clusterName = this.brokerController.getBrokerConfig().getBrokerClusterName();
+        MessageAccessor.putProperty(msgInner, MessageConst.PROPERTY_CLUSTER, clusterName);
+        msgInner.setPropertiesString(MessageDecoder.messageProperties2String(msgInner.getProperties()));
         PutMessageResult putMessageResult = null;
         Map<String, String> oriProps = MessageDecoder.string2messageProperties(requestHeader.getProperties());
         String traFlag = oriProps.get(MessageConst.PROPERTY_TRANSACTION_PREPARED);
-        if (traFlag != null && Boolean.parseBoolean(traFlag)) {
+        if (traFlag != null && Boolean.parseBoolean(traFlag)
+            && !(msgInner.getReconsumeTimes() > 0 && msgInner.getDelayTimeLevel() > 0)) { //For client under version 4.6.1
             if (this.brokerController.getBrokerConfig().isRejectTransactionMessage()) {
                 response.setCode(ResponseCode.NO_PERMISSION);
                 response.setRemark(

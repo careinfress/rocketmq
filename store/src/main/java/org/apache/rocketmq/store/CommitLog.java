@@ -1596,6 +1596,7 @@ public class CommitLog {
         public AppendMessageResult doAppend(final long fileFromOffset, final ByteBuffer byteBuffer, final int maxBlank,
             final MessageExtBrokerInner msgInner) {
             // STORETIMESTAMP + STOREHOSTADDRESS + OFFSET <br>
+
             // PHY OFFSET
 
             // fileFromOffset：一个commitLog文件（对应一个MappedFile）对应的偏移量（文件名就代表着偏移量）

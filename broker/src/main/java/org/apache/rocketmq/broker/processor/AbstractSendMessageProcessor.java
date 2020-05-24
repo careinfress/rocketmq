@@ -175,12 +175,7 @@ public abstract class AbstractSendMessageProcessor extends AsyncNettyRequestProc
             return response;
         }
 
-        // 不能和系统默认的topic冲突， AUTO_CREATE_TOPIC_KEY_TOPIC(TBW102)
-        if (!this.brokerController.getTopicConfigManager().isTopicCanSendMessage(requestHeader.getTopic())) {
-            String errorMsg = "the topic[" + requestHeader.getTopic() + "] is conflict with system reserved words.";
-            log.warn(errorMsg);
-            response.setCode(ResponseCode.SYSTEM_ERROR);
-            response.setRemark(errorMsg);
+        if (!TopicValidator.validateTopic(requestHeader.getTopic(), response)) {
             return response;
         }
 

@@ -222,7 +222,7 @@ public class ScheduleMessageService extends ConfigManager {
         return true;
     }
 
-    class  DeliverDelayedMessageTimerTask extends TimerTask {
+    class DeliverDelayedMessageTimerTask extends TimerTask {
         private final int delayLevel;
         private final long offset;
 
@@ -379,7 +379,6 @@ public class ScheduleMessageService extends ConfigManager {
             ScheduleMessageService.this.timer.schedule(new DeliverDelayedMessageTimerTask(this.delayLevel,
                 failScheduleOffset), DELAY_FOR_A_WHILE);
         }
-
 
         private MessageExtBrokerInner messageTimeup(MessageExt msgExt) {
             MessageExtBrokerInner msgInner = new MessageExtBrokerInner();
