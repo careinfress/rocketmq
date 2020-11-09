@@ -453,6 +453,12 @@ public class ConsumeMessageConcurrentlyService implements ConsumeMessageService 
                 consumeMessageContext.getProps().put(MixAll.CONSUME_CONTEXT_TYPE, returnType.name());
             }
 
+            /**
+             * 这里的判断说明只要不是手动将 status = ConsumeConcurrentlyStatus.CONSUME_SUCCESS
+             * 那么消息都是失败的，需要重新消费，重新消费的话就是将消息重新发给 broker
+             * 不管是超时还是异常，status 都是 null
+             *
+             */
             if (null == status) {
                 log.warn("consumeMessage return null, Group: {} Msgs: {} MQ: {}",
                     ConsumeMessageConcurrentlyService.this.consumerGroup,
